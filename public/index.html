@@ -19,7 +19,7 @@ button{font:inherit;color:var(--tx);background:#171d3d;border:1px solid var(--li
 button:hover{border-color:var(--cy)}button.on{border-color:var(--cy);background:#12304a}button:disabled{opacity:.4;cursor:default}
 .cls{display:grid;gap:6px;margin-top:10px}.cls button{text-align:left}.cls small{display:block;color:var(--dim)}
 .shop{display:grid;gap:6px}.shop button{display:flex;justify-content:space-between}
-#go{grid-column:1/-1;background:var(--mg);border-color:var(--mg);font-size:20px;font-weight:700;padding:14px;color:#fff;box-shadow:0 0 22px #ff3d8b66}
+.rm{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}.rm input{flex:1;min-width:120px;text-transform:uppercase;letter-spacing:.3em;text-align:center}#mk,#jn{background:var(--mg);border-color:var(--mg);font-size:20px;font-weight:700;padding:14px;color:#fff;box-shadow:0 0 22px #ff3d8b66}
 ol{margin:0;padding-left:22px;font-size:14px;line-height:1.7}.how{font-size:13px;color:var(--dim);line-height:1.7;grid-column:1/-1}
 #lv{position:fixed;left:50%;bottom:78px;transform:translateX(-50%);display:none;gap:8px;z-index:5}
 #lv button{background:#14213f;border-color:var(--cy);padding:12px 14px;font-size:15px;box-shadow:0 0 14px #3df5e044}
@@ -34,7 +34,7 @@ ol{margin:0;padding-left:22px;font-size:14px;line-height:1.7}.how{font-size:13px
 <div class="p"><h2>プレイヤー</h2><input id="nm" maxlength="12" placeholder="なまえ">
 <div class="cls" id="cls"></div></div>
 <div class="p"><h2>永続強化 &nbsp; 所持 <b id="gold" style="color:var(--cy)"></b> G</h2><div class="shop" id="shop"></div></div>
-<button id="go">出撃</button>
+<div class="rm"><button id="mk">部屋を作る</button><input id="rc" maxlength="4" placeholder="コード4文字"><button id="jn">入る</button></div><div id="er" style="grid-column:1/-1;color:var(--mg);min-height:1.2em"></div>
 <div class="p"><h2>ランキング(ウェーブ / 撃破数)</h2><ol id="lb"><li>まだ記録なし</li></ol></div>
 <div class="p how">移動: WASD・矢印キー(スマホはドラッグ)。攻撃は自動。<br>敵が落とす経験値を集めてレベルアップ → 1/2/3キーか画面のボタンで強化を選択。<br>5ウェーブごとにボス。死んで得たゴールドは永続強化に使えます。</div>
 </div></div>
@@ -57,21 +57,26 @@ function showLb(l){$('#lb').innerHTML=l&&l.length?l.map(r=>'<li>'+r.n.replace(/[
 $('#nm').value=S.name;menu();
 const cv=$('#cv'),x=cv.getContext('2d');
 function rs(){cv.width=innerWidth;cv.height=innerHeight}rs();onresize=rs;
-let ws,st=null,ch=null,rings=[],frame=0,lastIn='',inp={x:0,y:0};
+let pp=null,lt=performance.now(),ws,st=null,ch=null,rings=[],frame=0,lastIn='',inp={x:0,y:0};
 const D=new Map();
 const sm=(id,a,b,f=.4)=>{let d=D.get(id);if(!d){d={x:a,y:b};D.set(id,d)}d.x+=(a-d.x)*f;d.y+=(b-d.y)*f;d.s=frame;return d};
-$('#go').onclick=()=>{
+let room='';
+function start(mode,code){
   S.name=$('#nm').value.trim()||'player'+(Math.random()*99|0);save();
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);
-  ws.onopen=()=>{ws.send(JSON.stringify({t:'join',name:S.name,cls:S.cls,m:S.m}));$('#menu').style.display='none'};
+  ws.onopen=()=>{ws.send(JSON.stringify({t:'join',mode,code,name:S.name,cls:S.cls,m:S.m}))};
   ws.onmessage=e=>{const m=JSON.parse(e.data);
     if(m.t==='s'){st=m;if(m.me.a)$('#dead').style.display='none';m.ev.forEach(v=>rings.push({x:v[0],y:v[1],r:v[2],t:performance.now()}))}
+    else if(m.t==='ok'){room=m.code;$('#menu').style.display='none';$('#er').textContent=''}
+    else if(m.t==='err'){$('#er').textContent=m.m;ws.close()}
     else if(m.t==='lb')showLb(m.l);
     else if(m.t==='lv'){ch=m.c;$('#lv').innerHTML='';m.c.forEach((n,i)=>{const b=document.createElement('button');b.textContent=(i+1)+': '+n;b.onclick=()=>pick(i);$('#lv').append(b)});$('#lv').style.display='flex'}
     else if(m.t==='dead'){S.gold+=m.gold;S.best=Math.max(S.best,m.wave);save();$('#lv').style.display='none';ch=null;
       $('#dres').innerHTML='ウェーブ '+m.wave+' / 撃破 '+m.kills+' / Lv'+m.lvl+'<br>獲得 <b style="color:var(--cy)">'+m.gold+'G</b>(ベスト W'+S.best+')';$('#dead').style.display='flex'}};
   ws.onclose=()=>{$('#menu').style.display='flex';$('#dead').style.display='none';st=null;menu();showLb()};
 };
+$('#mk').onclick=()=>start('create');
+$('#jn').onclick=()=>{const c=$('#rc').value.trim();c.length==4?start('join',c):$('#er').textContent='4文字のコードを入力してください'};
 function pick(i){if(!ch)return;ws.send(JSON.stringify({t:'pick',i}));ch=null;$('#lv').style.display='none'}
 function sendIn(){if(!ws||ws.readyState!==1)return;const s=inp.x+','+inp.y;if(s!==lastIn){lastIn=s;ws.send(JSON.stringify({t:'in',x:inp.x,y:inp.y}))}}
 const keys={};
@@ -86,26 +91,32 @@ const COL=['#ff4d5e','#ffb02e','#a96bff','#ff2d95'],R=[12,9,20,42];
 function draw(){
   frame++;requestAnimationFrame(draw);const w=cv.width,h=cv.height;
   x.fillStyle='#070914';x.fillRect(0,0,w,h);if(!st)return;
-  const c=sm('cam',st.c[0],st.c[1],.25),ox=w/2-c.x,oy=h/2-c.y;
+  const nw=performance.now(),dt=Math.min(.05,(nw-lt)/1000);lt=nw;
+  const sp=st.pl.find(q=>q[0]===st.id);
+  if(sp){const ex=sp[1]-(pp?pp.x:0),ey=sp[2]-(pp?pp.y:0),dd=Math.hypot(ex,ey);
+    if(!pp||!st.me.a||dd>250)pp={x:sp[1],y:sp[2]};
+    else{pp.x=Math.max(20,Math.min(W-20,pp.x+inp.x*st.me.sp*dt));pp.y=Math.max(20,Math.min(H-20,pp.y+inp.y*st.me.sp*dt));
+      const k=(inp.x||inp.y)?(dd>60?.1:0):.2;pp.x+=ex*k;pp.y+=ey*k}}
+  const tg=st.me.a&&pp?pp:{x:st.c[0],y:st.c[1]},c=sm('cam',tg.x,tg.y,st.me.a?1:.25),ox=w/2-c.x,oy=h/2-c.y;
   x.strokeStyle='#161c3c';x.lineWidth=1;x.beginPath();
   for(let g=Math.floor((c.x-w/2)/100)*100;g<c.x+w/2;g+=100){x.moveTo(g+ox,0);x.lineTo(g+ox,h)}
   for(let g=Math.floor((c.y-h/2)/100)*100;g<c.y+h/2;g+=100){x.moveTo(0,g+oy);x.lineTo(w,g+oy)}
   x.stroke();x.strokeStyle='#ff3d8b';x.lineWidth=3;x.strokeRect(ox,oy,W,H);
   x.fillStyle='#3df5e0';for(const g of st.g)x.fillRect(g[0]+ox-3,g[1]+oy-3,6,6);
-  for(const e of st.e){const d=sm(e[0],e[1],e[2]),r=R[e[3]];x.fillStyle=COL[e[3]];x.shadowColor=COL[e[3]];x.shadowBlur=10;
+  for(const e of st.e){const d=sm(e[0],e[1],e[2]),r=R[e[3]];x.fillStyle=COL[e[3]];
     x.beginPath();x.arc(d.x+ox,d.y+oy,r,0,7);x.fill();x.shadowBlur=0;
     if(e[3]>=2&&e[4]<100){x.fillStyle='#000a';x.fillRect(d.x+ox-r,d.y+oy-r-8,r*2,4);x.fillStyle='#fff';x.fillRect(d.x+ox-r,d.y+oy-r-8,r*2*e[4]/100,4)}}
   x.fillStyle='#fff36b';for(const b of st.b){const d=sm(b[0],b[1],b[2],.6);x.beginPath();x.arc(d.x+ox,d.y+oy,4,0,7);x.fill()}
   const now=performance.now();rings=rings.filter(r=>now-r.t<450);
   for(const r of rings){const k=(now-r.t)/450;x.strokeStyle='rgba(61,245,224,'+(1-k)+')';x.lineWidth=6;x.beginPath();x.arc(r.x+ox,r.y+oy,r.r*k,0,7);x.stroke()}
   x.textAlign='center';x.font='12px sans-serif';
-  for(const p of st.pl){const d=sm(p[0],p[1],p[2]),me=p[0]===st.id;if(!p[6]){x.globalAlpha=.3}
+  for(const p of st.pl){const me=p[0]===st.id,d=me&&pp&&p[6]?pp:sm(p[0],p[1],p[2]);if(!p[6]){x.globalAlpha=.3}
     x.fillStyle=me?'#3df5e0':'#7dff8a';x.shadowColor=x.fillStyle;x.shadowBlur=14;x.beginPath();x.arc(d.x+ox,d.y+oy,14,0,7);x.fill();x.shadowBlur=0;
     x.fillStyle='#000a';x.fillRect(d.x+ox-18,d.y+oy+20,36,4);x.fillStyle='#ff3d8b';x.fillRect(d.x+ox-18,d.y+oy+20,36*p[3]/100,4);
     x.fillStyle='#e6ebff';x.fillText(p[4],d.x+ox,d.y+oy-22);x.globalAlpha=1}
   for(const [k,v] of D)if(v.s!==frame)D.delete(k);
   const m=st.me;x.textAlign='left';x.font='bold 16px sans-serif';x.fillStyle='#e6ebff';
-  x.fillText('WAVE '+st.w+(st.w%5===4?'  (次はボス!)':'')+'   次まで '+st.wt+'s   撃破 '+m.k+'   参加 '+st.pl.length+'人',14,26);
+  x.fillText('WAVE '+st.w+(st.w%5===4?'  (次はボス!)':'')+'   次まで '+st.wt+'s   撃破 '+m.k+'   参加 '+st.pl.length+'人   ROOM '+room,14,26);
   const bw=Math.min(420,w-28),bx=(w-bw)/2;
   x.fillStyle='#000a';x.fillRect(bx,h-56,bw,16);x.fillRect(bx,h-34,bw,8);
   x.fillStyle='#ff3d8b';x.fillRect(bx,h-56,bw*m.hp/m.mh,16);x.fillStyle='#3df5e0';x.fillRect(bx,h-34,bw*m.xp/m.nd,8);

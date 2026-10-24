@@ -1,7 +1,7 @@
 'use strict';
 const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
-const PORT = process.env.PORT || 3000, W = 3000, H = 3000, DT = 0.05;
+const PORT = process.env.PORT || 3000, W = 3000, H = 3000, DT = 1 / 30;
 const PUB = path.join(__dirname, 'public'), DB = path.join(__dirname, 'data.json');
 const rnd = (a, b) => a + Math.random() * (b - a), clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 let lb = []; try { lb = JSON.parse(fs.readFileSync(DB, 'utf8')); } catch {}
@@ -44,6 +44,8 @@ const T = [
 ];
 
 let nextId = 1; const nid = () => nextId++;
+function send(ws, m) { if (ws.readyState === 1) ws.send(JSON.stringify(m)); }
+function makeRoom(code) {
 const players = new Map();
 let E = [], B = [], G = [], ev = [], wave = 1, wt = 0, acc = 0, over = 0;
 
@@ -160,7 +162,7 @@ function snap(P, A) {
     const c = p.alive ? p : (A[0] || p), near = (o, rx = 1000, ry = 700) => Math.abs(o.x - c.x) < rx && Math.abs(o.y - c.y) < ry;
     send(p.ws, {
       t: 's', id: p.id, w: wave, wt: Math.ceil(30 - wt), c: [c.x | 0, c.y | 0], pl, ev,
-      me: { hp: p.hp | 0, mh: p.maxhp, xp: p.xp | 0, nd: p.need, lv: p.lvl, k: p.kills, a: p.alive ? 1 : 0 },
+      me: { sp: p.spd | 0, hp: p.hp | 0, mh: p.maxhp, xp: p.xp | 0, nd: p.need, lv: p.lvl, k: p.kills, a: p.alive ? 1 : 0 },
       e: E.filter(e => near(e)).map(e => [e.id, e.x | 0, e.y | 0, e.t, Math.max(0, e.hp / e.mh * 100) | 0]),
       b: B.filter(b => near(b)).map(b => [b.id, b.x | 0, b.y | 0]),
       g: G.filter(g => near(g)).map(g => [g.x | 0, g.y | 0])
@@ -168,24 +170,39 @@ function snap(P, A) {
   }
 }
 
+return { players, tick, stats, offer };
+}
+
+const rooms = new Map();
+const mkCode = () => { let c; do { c = ''; for (let i = 0; i < 4; i++) c += 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.random() * 32 | 0]; } while (rooms.has(c)); return c; };
 const wss = new WebSocketServer({ server });
 wss.on('connection', ws => {
-  let p = null;
+  let p = null, room = null;
   ws.on('message', d => {
     let m; try { m = JSON.parse(d); } catch { return; }
-    if (m.t === 'join' && !p && players.size < 24) {
+    if (m.t === 'join' && !p) {
+      let code = String(m.code || '').toUpperCase().trim();
+      if (m.mode === 'create') {
+        if (rooms.size >= 50) return send(ws, { t: 'err', m: '部屋が満員です。しばらくしてからお試しください' });
+        code = mkCode(); rooms.set(code, makeRoom(code));
+      }
+      const r = rooms.get(code);
+      if (!r) return send(ws, { t: 'err', m: 'その部屋コードは見つかりません' });
+      if (r.players.size >= 8) return send(ws, { t: 'err', m: 'この部屋は満員です(8人)' });
+      room = r;
       const cls = clamp(m.cls | 0, 0, CL.length - 1), mm = {};
       for (const k of ['hp', 'dmg', 'spd', 'xp']) mm[k] = clamp((m.m && m.m[k]) | 0, 0, 10);
       p = { id: nid(), ws, ix: 0, iy: 0, name: String(m.name || 'player').slice(0, 12), cls, m: mm };
-      Object.assign(p, stats(cls, mm)); players.set(p.id, p); send(ws, { t: 'lb', l: lb });
+      Object.assign(p, room.stats(cls, mm)); room.players.set(p.id, p);
+      send(ws, { t: 'ok', code }); send(ws, { t: 'lb', l: lb });
     } else if (!p) return;
     else if (m.t === 'in') { let x = +m.x || 0, y = +m.y || 0; const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; } p.ix = x; p.iy = y; }
     else if (m.t === 'pick' && p.ch) {
-      const u = UP[p.ch[m.i | 0]]; if (u) { u[2](p); p.ch = null; offer(p); }
+      const u = UP[p.ch[m.i | 0]]; if (u) { u[2](p); p.ch = null; room.offer(p); }
     }
   });
-  ws.on('close', () => { if (p) players.delete(p.id); });
+  ws.on('close', () => { if (p && room) room.players.delete(p.id); });
   ws.on('error', () => {});
 });
-setInterval(tick, DT * 1000);
+setInterval(() => { for (const [c, r] of rooms) { if (!r.players.size) rooms.delete(c); else r.tick(); } }, 1000 / 30);
 server.listen(PORT, () => console.log('listening on ' + PORT));
