@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>NEON SURVIVORS ONLINE</title>
+<style>
+:root{--bg:#070914;--panel:#10142a;--line:#26305c;--cy:#3df5e0;--mg:#ff3d8b;--tx:#e6ebff;--dim:#8a93c4}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font-family:"Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;touch-action:none}
+.ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:12px;overflow:auto}
+#menu{background:radial-gradient(circle at 50% 0,#1a1f4a,var(--bg) 70%)}
+.box{width:min(760px,100%);display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:640px){.box{grid-template-columns:1fr}}
+h1{grid-column:1/-1;margin:0;font-size:clamp(28px,6vw,48px);letter-spacing:.04em;color:var(--cy);text-shadow:0 0 18px var(--cy)}
+h1 span{color:var(--mg);text-shadow:0 0 18px var(--mg)}
+.p{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.p h2{margin:0 0 10px;font-size:15px;color:var(--dim);font-weight:600}
+input{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:#0a0d20;color:var(--tx);font-size:16px}
+button{font:inherit;color:var(--tx);background:#171d3d;border:1px solid var(--line);border-radius:8px;padding:9px 12px;cursor:pointer}
+button:hover{border-color:var(--cy)}button.on{border-color:var(--cy);background:#12304a}button:disabled{opacity:.4;cursor:default}
+.cls{display:grid;gap:6px;margin-top:10px}.cls button{text-align:left}.cls small{display:block;color:var(--dim)}
+.shop{display:grid;gap:6px}.shop button{display:flex;justify-content:space-between}
+#go{grid-column:1/-1;background:var(--mg);border-color:var(--mg);font-size:20px;font-weight:700;padding:14px;color:#fff;box-shadow:0 0 22px #ff3d8b66}
+ol{margin:0;padding-left:22px;font-size:14px;line-height:1.7}.how{font-size:13px;color:var(--dim);line-height:1.7;grid-column:1/-1}
+#lv{position:fixed;left:50%;bottom:78px;transform:translateX(-50%);display:none;gap:8px;z-index:5}
+#lv button{background:#14213f;border-color:var(--cy);padding:12px 14px;font-size:15px;box-shadow:0 0 14px #3df5e044}
+#dead{display:none;pointer-events:none;background:#000a;flex-direction:column;text-align:center;gap:6px}
+#dead b{font-size:32px;color:var(--mg)}
+</style></head><body>
+<canvas id="cv"></canvas>
+<div id="lv"></div>
+<div class="ov" id="dead"><b>全滅…</b><div id="dres"></div><div style="color:var(--dim)">まもなく次のラウンドが始まります</div></div>
+<div class="ov" id="menu"><div class="box">
+<h1>NEON <span>SURVIVORS</span> ONLINE</h1>
+<div class="p"><h2>プレイヤー</h2><input id="nm" maxlength="12" placeholder="なまえ">
+<div class="cls" id="cls"></div></div>
+<div class="p"><h2>永続強化 &nbsp; 所持 <b id="gold" style="color:var(--cy)"></b> G</h2><div class="shop" id="shop"></div></div>
+<button id="go">出撃</button>
+<div class="p"><h2>ランキング(ウェーブ / 撃破数)</h2><ol id="lb"><li>まだ記録なし</li></ol></div>
+<div class="p how">移動: WASD・矢印キー(スマホはドラッグ)。攻撃は自動。<br>敵が落とす経験値を集めてレベルアップ → 1/2/3キーか画面のボタンで強化を選択。<br>5ウェーブごとにボス。死んで得たゴールドは永続強化に使えます。</div>
+</div></div>
+<script>
+const $=s=>document.querySelector(s),K='nso1',W=3000,H=3000;
+let S={gold:0,m:{hp:0,dmg:0,spd:0,xp:0},name:'',cls:0,best:0};
+try{Object.assign(S,JSON.parse(localStorage[K]))}catch{}
+const save=()=>{try{localStorage[K]=JSON.stringify(S)}catch{}};
+const CLS=[['バランス','万能。まずはここから'],['ガンナー','HP低め・2連射で手数勝負'],['タンク','HP高め・周囲を焼くノヴァ持ち']];
+const META=[['hp','❤️ 体力 +15'],['dmg','💥 攻撃 +8%'],['spd','👟 速度 +3%'],['xp','📘 経験値 +8%']];
+const cost=l=>Math.floor(40*Math.pow(l+1,1.7));
+function menu(){
+  $('#gold').textContent=S.gold;
+  $('#cls').innerHTML='';CLS.forEach((c,i)=>{const b=document.createElement('button');b.className=S.cls==i?'on':'';b.innerHTML=c[0]+'<small>'+c[1]+'</small>';b.onclick=()=>{S.cls=i;save();menu()};$('#cls').append(b)});
+  $('#shop').innerHTML='';META.forEach(([k,n])=>{const l=S.m[k],c=cost(l),b=document.createElement('button');
+    b.innerHTML='<span>'+n+' <small>Lv'+l+'/10</small></span><span>'+(l>=10?'MAX':c+'G')+'</span>';b.disabled=l>=10||S.gold<c;
+    b.onclick=()=>{S.gold-=c;S.m[k]++;save();menu()};$('#shop').append(b)});
+}
+function showLb(l){$('#lb').innerHTML=l&&l.length?l.map(r=>'<li>'+r.n.replace(/[<>&]/g,'')+' — W'+r.w+' / '+r.k+'体 (Lv'+r.l+')</li>').join(''):'<li>まだ記録なし</li>'}
+$('#nm').value=S.name;menu();
+const cv=$('#cv'),x=cv.getContext('2d');
+function rs(){cv.width=innerWidth;cv.height=innerHeight}rs();onresize=rs;
+let ws,st=null,ch=null,rings=[],frame=0,lastIn='',inp={x:0,y:0};
+const D=new Map();
+const sm=(id,a,b,f=.4)=>{let d=D.get(id);if(!d){d={x:a,y:b};D.set(id,d)}d.x+=(a-d.x)*f;d.y+=(b-d.y)*f;d.s=frame;return d};
+$('#go').onclick=()=>{
+  S.name=$('#nm').value.trim()||'player'+(Math.random()*99|0);save();
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);
+  ws.onopen=()=>{ws.send(JSON.stringify({t:'join',name:S.name,cls:S.cls,m:S.m}));$('#menu').style.display='none'};
+  ws.onmessage=e=>{const m=JSON.parse(e.data);
+    if(m.t==='s'){st=m;if(m.me.a)$('#dead').style.display='none';m.ev.forEach(v=>rings.push({x:v[0],y:v[1],r:v[2],t:performance.now()}))}
+    else if(m.t==='lb')showLb(m.l);
+    else if(m.t==='lv'){ch=m.c;$('#lv').innerHTML='';m.c.forEach((n,i)=>{const b=document.createElement('button');b.textContent=(i+1)+': '+n;b.onclick=()=>pick(i);$('#lv').append(b)});$('#lv').style.display='flex'}
+    else if(m.t==='dead'){S.gold+=m.gold;S.best=Math.max(S.best,m.wave);save();$('#lv').style.display='none';ch=null;
+      $('#dres').innerHTML='ウェーブ '+m.wave+' / 撃破 '+m.kills+' / Lv'+m.lvl+'<br>獲得 <b style="color:var(--cy)">'+m.gold+'G</b>(ベスト W'+S.best+')';$('#dead').style.display='flex'}};
+  ws.onclose=()=>{$('#menu').style.display='flex';$('#dead').style.display='none';st=null;menu();showLb()};
+};
+function pick(i){if(!ch)return;ws.send(JSON.stringify({t:'pick',i}));ch=null;$('#lv').style.display='none'}
+function sendIn(){if(!ws||ws.readyState!==1)return;const s=inp.x+','+inp.y;if(s!==lastIn){lastIn=s;ws.send(JSON.stringify({t:'in',x:inp.x,y:inp.y}))}}
+const keys={};
+function keyv(){inp.x=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0);inp.y=(keys.s||keys.arrowdown?1:0)-(keys.w||keys.arrowup?1:0);sendIn()}
+onkeydown=e=>{if(e.target.tagName==='INPUT')return;const k=e.key.toLowerCase();if('123'.includes(k)&&k)pick(+k-1);keys[k]=1;keyv()};
+onkeyup=e=>{keys[e.key.toLowerCase()]=0;keyv()};
+let t0=null;
+cv.ontouchstart=e=>{t0={x:e.touches[0].clientX,y:e.touches[0].clientY}};
+cv.ontouchmove=e=>{if(!t0)return;const t=e.touches[0];inp.x=(t.clientX-t0.x)/50;inp.y=(t.clientY-t0.y)/50;const l=Math.hypot(inp.x,inp.y);if(l>1){inp.x/=l;inp.y/=l}sendIn()};
+cv.ontouchend=()=>{t0=null;inp.x=inp.y=0;sendIn()};
+const COL=['#ff4d5e','#ffb02e','#a96bff','#ff2d95'],R=[12,9,20,42];
+function draw(){
+  frame++;requestAnimationFrame(draw);const w=cv.width,h=cv.height;
+  x.fillStyle='#070914';x.fillRect(0,0,w,h);if(!st)return;
+  const c=sm('cam',st.c[0],st.c[1],.25),ox=w/2-c.x,oy=h/2-c.y;
+  x.strokeStyle='#161c3c';x.lineWidth=1;x.beginPath();
+  for(let g=Math.floor((c.x-w/2)/100)*100;g<c.x+w/2;g+=100){x.moveTo(g+ox,0);x.lineTo(g+ox,h)}
+  for(let g=Math.floor((c.y-h/2)/100)*100;g<c.y+h/2;g+=100){x.moveTo(0,g+oy);x.lineTo(w,g+oy)}
+  x.stroke();x.strokeStyle='#ff3d8b';x.lineWidth=3;x.strokeRect(ox,oy,W,H);
+  x.fillStyle='#3df5e0';for(const g of st.g)x.fillRect(g[0]+ox-3,g[1]+oy-3,6,6);
+  for(const e of st.e){const d=sm(e[0],e[1],e[2]),r=R[e[3]];x.fillStyle=COL[e[3]];x.shadowColor=COL[e[3]];x.shadowBlur=10;
+    x.beginPath();x.arc(d.x+ox,d.y+oy,r,0,7);x.fill();x.shadowBlur=0;
+    if(e[3]>=2&&e[4]<100){x.fillStyle='#000a';x.fillRect(d.x+ox-r,d.y+oy-r-8,r*2,4);x.fillStyle='#fff';x.fillRect(d.x+ox-r,d.y+oy-r-8,r*2*e[4]/100,4)}}
+  x.fillStyle='#fff36b';for(const b of st.b){const d=sm(b[0],b[1],b[2],.6);x.beginPath();x.arc(d.x+ox,d.y+oy,4,0,7);x.fill()}
+  const now=performance.now();rings=rings.filter(r=>now-r.t<450);
+  for(const r of rings){const k=(now-r.t)/450;x.strokeStyle='rgba(61,245,224,'+(1-k)+')';x.lineWidth=6;x.beginPath();x.arc(r.x+ox,r.y+oy,r.r*k,0,7);x.stroke()}
+  x.textAlign='center';x.font='12px sans-serif';
+  for(const p of st.pl){const d=sm(p[0],p[1],p[2]),me=p[0]===st.id;if(!p[6]){x.globalAlpha=.3}
+    x.fillStyle=me?'#3df5e0':'#7dff8a';x.shadowColor=x.fillStyle;x.shadowBlur=14;x.beginPath();x.arc(d.x+ox,d.y+oy,14,0,7);x.fill();x.shadowBlur=0;
+    x.fillStyle='#000a';x.fillRect(d.x+ox-18,d.y+oy+20,36,4);x.fillStyle='#ff3d8b';x.fillRect(d.x+ox-18,d.y+oy+20,36*p[3]/100,4);
+    x.fillStyle='#e6ebff';x.fillText(p[4],d.x+ox,d.y+oy-22);x.globalAlpha=1}
+  for(const [k,v] of D)if(v.s!==frame)D.delete(k);
+  const m=st.me;x.textAlign='left';x.font='bold 16px sans-serif';x.fillStyle='#e6ebff';
+  x.fillText('WAVE '+st.w+(st.w%5===4?'  (次はボス!)':'')+'   次まで '+st.wt+'s   撃破 '+m.k+'   参加 '+st.pl.length+'人',14,26);
+  const bw=Math.min(420,w-28),bx=(w-bw)/2;
+  x.fillStyle='#000a';x.fillRect(bx,h-56,bw,16);x.fillRect(bx,h-34,bw,8);
+  x.fillStyle='#ff3d8b';x.fillRect(bx,h-56,bw*m.hp/m.mh,16);x.fillStyle='#3df5e0';x.fillRect(bx,h-34,bw*m.xp/m.nd,8);
+  x.textAlign='center';x.font='12px sans-serif';x.fillStyle='#fff';x.fillText('HP '+m.hp+'/'+m.mh+'   Lv'+m.lv,w/2,h-43);
+}
+draw();
+</script></body></html>
